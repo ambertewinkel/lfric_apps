@@ -48,6 +48,7 @@ module ffsl_vert_alg_mod
                                         only: ffsl_flux_z_rev_nirvana_kernel_type
   use fv_difference_z_kernel_mod,       only: fv_difference_z_kernel_type
   use fv_divergence_z_kernel_mod,       only: fv_divergence_z_kernel_type
+  use test_courant_kernel_mod,          only: test_courant_kernel_type
 
   ! Configuration options
   use transport_config_mod,             only: ffsl_unity_3d,                   &
@@ -262,6 +263,7 @@ contains
 
     ! Internal fields
     type(r_tran_field_type) :: dz_w3
+    type(r_tran_field_type) :: C_w3
 
     ! Useful constants
     integer(kind=i_def) :: mesh_id
@@ -340,6 +342,11 @@ contains
       call dz_w3%initialise( vector_space = field_fs )
       call copy_field(dz_w3_rdef, dz_w3)
     end if
+
+    ! Compute Courant at cell centres
+    call C_w3%initialise( vector_space = field_fs )
+    call invoke( test_courant_kernel_type(dep_pts_z, &
+                                                C_w3) )
 
     ! Compute fluxes -----------------------------------------------------------
     select case ( vertical_order )
