@@ -5,9 +5,8 @@
 !-----------------------------------------------------------------------------
 
 !> @brief   Test kernel in the z direction. (Cell centred Courant number calculation)
-!> @details Adapted from the Piecewise Constant Method applied to the z direction. 
+!> @details Adapted from the Piecewise Constant Method applied to the z direction.
 !!          Original file: ffsl_flux_z_constant_kernel_mod.F90
-!!          
 
 module test_courant_kernel_mod
 
@@ -86,15 +85,18 @@ subroutine test_courant_code( nlayers,   &
   w2v_idx = map_w2v(1)
   w3_idx = map_w3(1)
 
-  ! Calculate Courant number at cell centers ! not quite correct, I need to base it off the local cell centred volume, I am not sure how the departure point 'Courant number' is calculated. 
+  ! Calculate Courant number at cell centers ! not quite correct, I need to
+  ! base it off the local cell centred volume, I am not sure how the departure
+  ! point 'Courant number' is calculated.
   displacement_m1 = 0.0_r_tran
   do k = 0, nlayers - 1
-    displacement = dep_dist(w2v_idx + k + 1) ! signed Courant number at W2v at faces
-    if (k == nlayer - 1) then 
+    displacement = dep_dist(w2v_idx + k + 1) ! signed Courant number at W2v
+    if (k == nlayers - 1) then 
       displacement = 0.0_r_tran ! update for top face
     end if
-    C_w3(w3idx + k) = 0.5_r_tran*(ABS(displacement_m1) + ABS(displacement))
+    C_w3(w3_idx + k) = 0.5_r_tran*(ABS(displacement_m1) + ABS(displacement))
     displacement_m1 = displacement ! update for lower face
+  end do
 
 end subroutine test_courant_code
 
