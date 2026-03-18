@@ -265,7 +265,7 @@
         "plot_str": "slices.py diagTransport $NODAL_DATA_DIR theta:tracer_con:tracer_adv:m_v T000000:T000025:T000050:T000075:T000100 -1 -91 0 $PLOT_DIR"
     }) %}
 
-{% elif task_ns.conf_name == "constant_wind_xy_test_courant-BiP40x40-5x5" %}
+{% elif task_ns.conf_name == "constant_wind_xy_test_compile-BiP40x40-5x5" %}
 
     {% do task_dict.update({
         "opt_confs": ["constant_wind_xy","null_vertical"],

@@ -46,9 +46,9 @@ module ffsl_vert_alg_mod
   use ffsl_flux_z_ppm_kernel_mod,       only: ffsl_flux_z_ppm_kernel_type
   use ffsl_flux_z_rev_nirvana_kernel_mod,                                      &
                                         only: ffsl_flux_z_rev_nirvana_kernel_type
+  use ffsl_flux_z_adhimex_kernel_mod,   only: ffsl_flux_z_adhimex_kernel_type
   use fv_difference_z_kernel_mod,       only: fv_difference_z_kernel_type
   use fv_divergence_z_kernel_mod,       only: fv_divergence_z_kernel_type
-  use test_courant_kernel_mod,          only: test_courant_kernel_type
 
   ! Configuration options
   use transport_config_mod,             only: ffsl_unity_3d,                   &
@@ -343,11 +343,6 @@ contains
       call copy_field(dz_w3_rdef, dz_w3)
     end if
 
-    ! Compute Courant at cell centres
-    call C_w3%initialise( vector_space = field_fs )
-    call invoke( test_courant_kernel_type(dep_pts_z, &
-                                                C_w3) )
-
     ! Compute fluxes -----------------------------------------------------------
     select case ( vertical_order )
     case ( 0 )
@@ -418,7 +413,14 @@ contains
                                                monotone,                       &
                                                min_val,                        &
                                                log_space) )
-
+    case ( 3 )
+      ! AdHImEx reconstruction (not actually FFSL)
+      call invoke( ffsl_flux_z_adhimex_kernel_type(mass_flux,                  &
+                                                    frac_wind_or_flux,         &
+                                                    dep_pts_z,                 &
+                                                    field_n,                   &
+                                                    detj_at_w3,                &
+                                                    step_dt) )
     case default
       call log_event( "ffsl_1d_vert_flux_alg: order not implemented", LOG_LEVEL_ERROR )
     end select

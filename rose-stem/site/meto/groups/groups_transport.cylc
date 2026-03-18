@@ -155,7 +155,7 @@
         "transport_eternal_fountain_xz_ffsl-BiP100x10-20x20_ex1a_cce_production-64bit",
     ],
     "transport_ex1a_test": [
-        "transport_constant_wind_xy_test_courant-BiP40x40-5x5_ex1a_cce_production-64bit",
+        "transport_constant_wind_xy_test_compile-BiP40x40-5x5_ex1a_cce_production-64bit",
     ],
     "transport_ex1a": [
         "transport_ex1a_developer",

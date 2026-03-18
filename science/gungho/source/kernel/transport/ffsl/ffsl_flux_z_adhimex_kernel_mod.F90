@@ -4,11 +4,11 @@
 ! under which the code may be used.
 !-----------------------------------------------------------------------------
 
-!> @brief   Test kernel in the z direction. (Cell centred Courant number calculation)
+!> @brief   AdHImEx kernel in the z direction.
 !> @details Adapted from the Piecewise Constant Method applied to the z direction.
 !!          Original file: ffsl_flux_z_constant_kernel_mod.F90
 
-module test_courant_kernel_mod
+module ffsl_flux_z_adhimex_kernel_mod
 
 use argument_mod,                   only : arg_type,              &
                                            GH_FIELD, GH_REAL,     &
@@ -26,7 +26,7 @@ private
 ! Public types
 !-------------------------------------------------------------------------------
 !> The type declaration for the kernel. Contains the metadata needed by the Psy layer
-type, public, extends(kernel_type) :: test_courant_kernel_type
+type, public, extends(kernel_type) :: ffsl_flux_z_adhimex_kernel_type
   private
   type(arg_type) :: meta_args(2) = (/                  &
        arg_type(GH_FIELD,  GH_REAL,    GH_READ,  W2v), & ! dep pts
@@ -34,13 +34,13 @@ type, public, extends(kernel_type) :: test_courant_kernel_type
        /)
   integer :: operates_on = CELL_COLUMN
 contains
-  procedure, nopass :: test_courant_code
+  procedure, nopass :: ffsl_flux_z_adhimex_code
 end type
 
 !-------------------------------------------------------------------------------
 ! Contained functions/subroutines
 !-------------------------------------------------------------------------------
-public :: test_courant_code
+public :: ffsl_flux_z_adhimex_code
 
 contains
 
@@ -54,7 +54,7 @@ contains
 !> @param[in]     ndf_w3    Number of degrees of freedom for W3 per cell
 !> @param[in]     undf_w3   Number of unique degrees of freedom for W3
 !> @param[in]     map_w3    The dofmap for the cell at the base of the column
-subroutine test_courant_code( nlayers,   &
+subroutine ffsl_flux_z_adhimex_code( nlayers,    &
                                       dep_dist,  &
                                       C_w3,      &
                                       ndf_w2v,   &
@@ -85,6 +85,7 @@ subroutine test_courant_code( nlayers,   &
   w2v_idx = map_w2v(1)
   w3_idx = map_w3(1)
 
+  ! Leftover code from test_courant file. Edit for AdHImEx scheme.
   ! Calculate Courant number at cell centers ! not quite correct, I need to
   ! base it off the local cell centred volume, I am not sure how the departure
   ! point 'Courant number' is calculated.
@@ -98,6 +99,6 @@ subroutine test_courant_code( nlayers,   &
     displacement_m1 = displacement ! update for lower face
   end do
 
-end subroutine test_courant_code
+end subroutine ffsl_flux_z_adhimex_code
 
-end module test_courant_kernel_mod
+end module ffsl_flux_z_adhimex_kernel_mod
