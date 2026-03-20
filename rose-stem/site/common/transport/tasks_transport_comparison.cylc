@@ -362,10 +362,12 @@
         "opt_confs": ["rotational_xz"],
         "resolution": "BiP100x10-20x20",
         "DT": 4,
-        "tsteps": 1,
+        "tsteps": 250,
         "mpi_parts": 4,
-        "wallclock": 180,
-        "kgo_checks": []
+        "wallclock": 30,
+        "kgo_checks": [],
+        "log_level": "info",
+        "plot_str": "spherical_and_vertical_slice_ugrid_plot.py $NODAL_DATA_DIR/lfric_diag.nc $PLOT_DIR tracer_con:tracer_adv xz all linear rotational",
     }) %}
 
 {% elif task_ns.conf_name == "translational_xz_ffsl-BiP100x10-20x20" %}
