@@ -135,10 +135,6 @@ subroutine ffsl_flux_z_adhimex_code( nlayers,    &
   end do
   implness_w2v(nlayers + 1) = zero
 
-  ! To check whether implicit is working:
-  implness_w2v = 0.5_r_tran*ones
-  implness_w3 = 0.5_r_tran*ones(1 : nlayers)
-
   ! Set up Butcher tableau (remember column-major order of reshape)
   a_ex = reshape((/ zero, zero, zero, zero, zero,                               &
                     zero, zero, 1.0_r_tran, 0.25_r_tran, 1.0_r_tran/6.0_r_tran, &
