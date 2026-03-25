@@ -121,19 +121,34 @@ subroutine ffsl_flux_z_adhimex_code( nlayers,    &
   zero = 0.0_r_tran
   ones = 1.0_r_tran
 
+  ! ! Calculate Courant number and implicitness - assumes uniform vertical grid
+  ! courant(1) = 0.5_r_tran*(ABS(dep_dist(w2v_idx)) &
+  !                              + ABS(dep_dist(w2v_idx + 1)))
+  ! implness_w3(1) = 1.0_r_tran - 1.0_r_tran/(1.0_r_tran + 0.7_r_tran*(MAX( &
+  !                         1.4_r_tran, courant(1)) - 1.4_r_tran))
+  ! implness_w2v(1) = zero
+  ! do k = 1, nlayers - 1
+  !   courant(k + 1) = 0.5_r_tran*(ABS(dep_dist(w2v_idx + k)) + ABS(dep_dist(w2v_idx + k + 1)))
+  !   implness_w3(k + 1) = 1.0_r_tran - 1.0_r_tran/(1.0_r_tran + 0.7_r_tran*(MAX( &
+  !                         1.4_r_tran, courant(k + 1)) - 1.4_r_tran))
+  !   implness_w2v(k + 1) = MAX(implness_w3(k), implness_w3(k+1))
+  ! end do
+  ! implness_w2v(nlayers + 1) = zero
+
   ! Calculate Courant number and implicitness - assumes uniform vertical grid
   courant(1) = 0.5_r_tran*(ABS(dep_dist(w2v_idx)) &
                                + ABS(dep_dist(w2v_idx + 1)))
-  implness_w3(1) = 1.0_r_tran - 1.0_r_tran/(1.0_r_tran + 0.7_r_tran*(MAX( &
-                          1.4_r_tran, courant(1)) - 1.4_r_tran))
+  implness_w3(1) = 1.0_r_tran - 1.0_r_tran/(MAX(1.0_r_tran, courant(1)))
   implness_w2v(1) = zero
   do k = 1, nlayers - 1
     courant(k + 1) = 0.5_r_tran*(ABS(dep_dist(w2v_idx + k)) + ABS(dep_dist(w2v_idx + k + 1)))
-    implness_w3(k + 1) = 1.0_r_tran - 1.0_r_tran/(1.0_r_tran + 0.7_r_tran*(MAX( &
-                          1.4_r_tran, courant(k + 1)) - 1.4_r_tran))
+    implness_w3(k + 1) = 1.0_r_tran - 1.0_r_tran/(MAX(1.0_r_tran, courant(k + 1)))
     implness_w2v(k + 1) = MAX(implness_w3(k), implness_w3(k+1))
   end do
   implness_w2v(nlayers + 1) = zero
+
+  ! implness_w2v = ones
+  ! implness_w3 = ones(1 : nlayers)
 
   ! Set up Butcher tableau (remember column-major order of reshape)
   a_ex = reshape((/ zero, zero, zero, zero, zero,                               &

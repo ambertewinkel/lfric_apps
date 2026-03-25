@@ -361,8 +361,8 @@
     {% do task_dict.update({
         "opt_confs": ["rotational_xz"],
         "resolution": "BiP100x10-20x20",
-        "DT": 4,
-        "tsteps": 250,
+        "DT": 40,
+        "tsteps": 25,
         "mpi_parts": 4,
         "wallclock": 30,
         "kgo_checks": [],
