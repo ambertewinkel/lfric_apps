@@ -48,6 +48,9 @@ public :: fifth_order_adhimex
 public :: gcrk
 public :: solve_fifth_order_matrix
 public :: fluxdiv
+public :: fct
+public :: adimex_upwind
+public :: set_extrema
 
 contains
 
@@ -203,6 +206,11 @@ subroutine ffsl_flux_z_adhimex_code( nlayers,    &
     end do
     flux(w2v_idx + nlayers) = 0.0_r_tran
   end do
+
+
+  if () then ! I might also need detj and dt in the fct algorithm. Not done for now.
+    call fct(nlayers, flux(w2v_idx : w2v_idx + nlayers), field(w3_idx : w3_idx + nlayers - 1), dep_dist())
+  end if
 
 end subroutine ffsl_flux_z_adhimex_code
 
@@ -458,6 +466,97 @@ subroutine fluxdiv( nl,                  &
   end do
 
 end subroutine fluxdiv
+
+
+!> @brief     Limits the high-order flux with flux-corrected transport (Zalesak 1979)
+!> @param[in]     nl        Number of layers
+!> @param[in,out] flux      High-order flux to be limited 
+!> @param[in]     field     Field at previous time step, needed for low-order solution
+!> @param[in]     dep_dist  Courant number at faces
+subroutine fct( nl,                  &
+                           flux,     &
+                           field,    &
+                           dep_dist )
+
+  implicit none
+
+  ! Arguments
+  integer(kind=i_def), intent(in)    :: nl                ! nlayers
+  real(kind=r_tran),   intent(inout) :: flux(nl + 1)      ! flux
+  real(kind=r_tran),   intent(inout) :: field(nl)         ! previous field
+  real(kind=r_tran),   intent(in)    :: dep_dist(nl + 1)  ! Courant
+
+  ! Internal variables
+  real(kind=r_tran) :: field_lo(nl)      ! low-order solution
+  real(kind=r_tran) :: flux_lo(nl + 1)   ! low-order flux
+  real(kind=r_tran) :: min_allowed(nl)   ! minimum allowable values
+  real(kind=r_tran) :: max_allowed(nl)   ! maximum allowable values
+
+  ! Calculate low-order solution (AdImEx upwind with 1-1/(2C))
+  ! call adimex_upwind(nl, field_lo, flux_lo, field, dep_dist)
+
+  ! Calculate allowable extrema
+  ! call set_extrema(nl, min_allowed, max_allowed, field_lo, field, dep_dist)
+
+  ! FCT algorithm (recomputes flux)
+  ! ...
+
+end subroutine fct
+
+
+!> @brief     Calculates first-order AdImEx upwind solution
+!> @param[in]     nl        Number of layers
+!> @param[in,out] field_lo  AdImEx upwind solution
+!> @param[in,out] flux_lo   Flux that gives the AdImEx upwind solution
+!> @param[in]     field     Field at previous time step
+!> @param[in]     dep_dist  Courant number at faces
+subroutine adimex_upwind( nl,        &
+                           field_lo, &
+                           flux_lo,  &
+                           field,    &
+                           dep_dist )
+
+  implicit none
+
+  ! Arguments
+  integer(kind=i_def), intent(in)    :: nl                ! nlayers
+  real(kind=r_tran),   intent(inout) :: field_lo(nl)      ! low-order field
+  real(kind=r_tran),   intent(inout) :: flux_lo(nl + 1)   ! low-order flux
+  real(kind=r_tran),   intent(in)    :: field(nl)         ! previous field
+  real(kind=r_tran),   intent(in)    :: dep_dist(nl + 1)  ! Courant
+
+  ! Internal variables
+
+
+
+end subroutine adimex_upwind
+
+
+!> @brief     todo: update Limits the high-order flux with flux-corrected transport (Zalesak 1979)
+!> @param[in]     nl        Number of layers
+!> @param[in,out] flux      High-order flux to be limited 
+!> @param[in]     field     Field at previous time step, needed for low-order solution
+!> @param[in]     dep_dist  Courant number at faces
+subroutine set_extrema( nl,                  &
+                           flux,     &
+                           field,    &
+                           dep_dist )
+
+  implicit none
+
+  ! Arguments ! todo: update
+  integer(kind=i_def), intent(in)    :: nl                ! nlayers
+  real(kind=r_tran),   intent(inout) :: flux(nl + 1)      ! flux
+  real(kind=r_tran),   intent(inout) :: field(nl)         ! previous field
+  real(kind=r_tran),   intent(in)    :: dep_dist(nl + 1)  ! Courant
+
+  ! Internal variables
+
+
+
+end subroutine set_extrema
+
+
 
 
 end module ffsl_flux_z_adhimex_kernel_mod
