@@ -135,6 +135,21 @@ subroutine ffsl_flux_z_adhimex_code( nlayers,    &
   end do
   implness_w2v(nlayers + 1) = zero
 
+  ! ! Calculate Courant number and implicitness - assumes uniform vertical grid
+  ! courant(1) = 0.5_r_tran*(ABS(dep_dist(w2v_idx)) &
+  !                              + ABS(dep_dist(w2v_idx + 1)))
+  ! implness_w3(1) = 1.0_r_tran - 1.0_r_tran/(MAX(1.0_r_tran, courant(1)))
+  ! implness_w2v(1) = zero
+  ! do k = 1, nlayers - 1
+  !   courant(k + 1) = 0.5_r_tran*(ABS(dep_dist(w2v_idx + k)) + ABS(dep_dist(w2v_idx + k + 1)))
+  !   implness_w3(k + 1) = 1.0_r_tran - 1.0_r_tran/(MAX(1.0_r_tran, courant(k + 1)))
+  !   implness_w2v(k + 1) = MAX(implness_w3(k), implness_w3(k+1))
+  ! end do
+  ! implness_w2v(nlayers + 1) = zero
+
+  ! implness_w2v = ones
+  ! implness_w3 = ones(1 : nlayers)
+
   ! Set up Butcher tableau (remember column-major order of reshape)
   a_ex = reshape((/ zero, zero, zero, zero, zero,                               &
                     zero, zero, 1.0_r_tran, 0.25_r_tran, 1.0_r_tran/6.0_r_tran, &
@@ -186,13 +201,13 @@ subroutine ffsl_flux_z_adhimex_code( nlayers,    &
     ! (new description with fluxdiv and I needed to change adv and con around)
     onemimplness_w2v = ones - implness_w2v
     call fluxdiv(nlayers, c_field_s_w2v, f_ex_con(s,:), onemimplness_w2v)
-    f_ex_con(s,:) = - f_ex_con(s,:)
+    ! f_ex_con(s,:) = f_ex_con(s,:)
     call fluxdiv(nlayers, c_field_s_w2v, f_im_con(s,:), implness_w2v)
-    f_im_con(s,:) = - f_im_con(s,:)
+    ! f_im_con(s,:) = f_im_con(s,:)
     call fluxdiv(nlayers, c_field_s_w2v, f_ex_adv(s,:), ones)
-    f_ex_adv(s,:) = - (ones(1:nlayers) - implness_w3)*f_ex_adv(s,:)
+    f_ex_adv(s,:) = (ones(1:nlayers) - implness_w3)*f_ex_adv(s,:)
     call fluxdiv(nlayers, c_field_s_w2v, f_im_adv(s,:), ones)
-    f_im_adv(s,:) = - implness_w3*f_im_adv(s,:)
+    f_im_adv(s,:) = implness_w3*f_im_adv(s,:)
 
     ! Update total flux
     flux(w2v_idx) = 0.0_r_tran
@@ -355,15 +370,15 @@ subroutine gcrk( nl,                  &
       guess = guess + alpha*v(j,:)
       r = r - alpha*Avj
 
+      call solve_fifth_order_matrix(nl, r, Ar, a_im, dep_dist, implness_w2v)
       beta = zero
-      do i = 1, j + 1
+      do i = 1, j ! + 1
         call solve_fifth_order_matrix(nl, v(i,:), Avi, a_im, dep_dist, implness_w2v)
         Avi2_sum = zero
         do k = 1, nl
           Avi2_sum = Avi2_sum + Avi(k)*Avi(k)
         end do
         Avi2_sum = MAX(Avi2_sum, 1.0E-15_r_tran)
-        call solve_fifth_order_matrix(nl, r, Ar, a_im, dep_dist, implness_w2v)
         do k = 1, nl
           beta(i) = beta(i) - Ar(k)*Avi(k)
         end do
@@ -371,7 +386,7 @@ subroutine gcrk( nl,                  &
       end do
 
       bv = zero
-      do i = 1, j + 1
+      do i = 1, j ! + 1
         bv = bv + beta(i)*v(i,:)
       end do
 
@@ -454,7 +469,7 @@ subroutine fluxdiv( nl,                  &
 
   ! (assume uniform grid)
   do k = 1, nl
-    div(k) = implfac(k + 1)*c_fieldh(k + 1) - implfac(k)*c_fieldh(k)
+    div(k) = - implfac(k + 1)*c_fieldh(k + 1) + implfac(k)*c_fieldh(k)
   end do
 
 end subroutine fluxdiv
