@@ -135,21 +135,6 @@ subroutine ffsl_flux_z_adhimex_code( nlayers,    &
   end do
   implness_w2v(nlayers + 1) = zero
 
-  ! ! Calculate Courant number and implicitness - assumes uniform vertical grid
-  ! courant(1) = 0.5_r_tran*(ABS(dep_dist(w2v_idx)) &
-  !                              + ABS(dep_dist(w2v_idx + 1)))
-  ! implness_w3(1) = 1.0_r_tran - 1.0_r_tran/(MAX(1.0_r_tran, courant(1)))
-  ! implness_w2v(1) = zero
-  ! do k = 1, nlayers - 1
-  !   courant(k + 1) = 0.5_r_tran*(ABS(dep_dist(w2v_idx + k)) + ABS(dep_dist(w2v_idx + k + 1)))
-  !   implness_w3(k + 1) = 1.0_r_tran - 1.0_r_tran/(MAX(1.0_r_tran, courant(k + 1)))
-  !   implness_w2v(k + 1) = MAX(implness_w3(k), implness_w3(k+1))
-  ! end do
-  ! implness_w2v(nlayers + 1) = zero
-
-  ! implness_w2v = ones
-  ! implness_w3 = ones(1 : nlayers)
-
   ! Set up Butcher tableau (remember column-major order of reshape)
   a_ex = reshape((/ zero, zero, zero, zero, zero,                               &
                     zero, zero, 1.0_r_tran, 0.25_r_tran, 1.0_r_tran/6.0_r_tran, &
@@ -312,8 +297,7 @@ subroutine gcrk( nl,                  &
                         initialguess, &
                         a_im,         &
                         dep_dist,     &
-                        implness_w2v  &
-                         )
+                        implness_w2v)
 
   implicit none
 
@@ -330,7 +314,7 @@ subroutine gcrk( nl,                  &
   integer(kind=i_def) :: k, m, mrestart, j, i
   real(kind=r_tran)   :: tol, reltol, Avj2_sum, Avi2_sum, alpha, r2max, rmx, zero
 
-  integer(kind=i_def), parameter :: jiters = 10
+  integer(kind=i_def), parameter :: jiters = 5
 
   real(kind=r_tran) :: v(jiters + 1, nl)
   real(kind=r_tran) :: r(nl)
@@ -344,7 +328,7 @@ subroutine gcrk( nl,                  &
   real(kind=r_tran) :: guess(nl)
 
   tol = 1.0E-6
-  mrestart = 10
+  mrestart = 20
   zero = 0.0_r_tran
   guess = initialguess
 
