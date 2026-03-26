@@ -35,6 +35,20 @@
         "plot_str": "spherical_and_vertical_slice_ugrid_plot.py $NODAL_DATA_DIR/lfric_diag.nc $PLOT_DIR theta:tracer_con:tracer_adv:m_v xz all linear eternal_fountain",
     }) %}
 
+{% elif task_ns.conf_name == "eternal_fountain_xz_adhimex_bigcfl-BiP100x10-20x20" %}
+
+    {% do task_dict.update({
+        "opt_confs": ["eternal_fountain_xz_bigcfl","adhimex"],
+        "resolution": "BiP100x10-20x20",
+        "DT": 40,
+        "tsteps": 25,
+        "mpi_parts": 4,
+        "wallclock": 30,
+        "kgo_checks": [],
+        "log_level": "info",
+        "plot_str": "spherical_and_vertical_slice_ugrid_plot.py $NODAL_DATA_DIR/lfric_diag.nc $PLOT_DIR theta:tracer_con:tracer_adv:m_v xz all linear eternal_fountain",
+    }) %}
+
 {% elif task_ns.conf_name == "hadley_dcmip_mol-C48" %}
 
     {% do task_dict.update({

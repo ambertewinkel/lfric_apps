@@ -157,6 +157,9 @@
     "transport_ex1a_test": [
         "transport_rotational_xz_ffsl-BiP100x10-20x20_ex1a_cce_production-64bit",
     ],
+    "transport_ex1a_adhimex": [
+        "transport_eternal_fountain_xz_adhimex_bigcfl-BiP100x10-20x20_ex1a_cce_production-64bit",
+    ],
     "transport_ex1a": [
         "transport_ex1a_developer",
         "transport_ex1a_ffsl-bigcfl",
