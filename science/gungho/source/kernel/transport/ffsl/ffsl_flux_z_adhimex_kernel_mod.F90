@@ -44,10 +44,15 @@ end type
 ! Contained functions/subroutines
 !-------------------------------------------------------------------------------
 public :: ffsl_flux_z_adhimex_code
-public :: fifth_order_adhimex
+public :: fifth_order_interp
 public :: gcrk
 public :: solve_fifth_order_matrix
 public :: fluxdiv
+public :: fct
+public :: adimex_upwind
+public :: first_order_interp
+public :: solve_first_order_matrix
+public :: set_extrema
 
 contains
 
@@ -114,16 +119,19 @@ subroutine ffsl_flux_z_adhimex_code( nlayers,    &
   real(kind=r_tran)   :: f_ex_con(nstages, nlayers)   ! ex conservative divergence
   real(kind=r_tran)   :: f_im_con(nstages, nlayers)   ! im conservative divergence
   real(kind=r_tran)   :: zero
-
+  logical(kind=l_def) :: bool_gcrk_fct                ! for GCR(k) settings
+  logical(kind=l_def) :: do_fct                       ! boolean whether or not to limit
+                                                      ! todo: set up in testcase?
 
   w2v_idx = map_w2v(1)
   w3_idx = map_w3(1)
   zero = 0.0_r_tran
   ones = 1.0_r_tran
+  bool_gcrk_fct = .false.
+  do_fct = .true.
 
   ! Calculate Courant number and implicitness - assumes uniform vertical grid
-  courant(1) = 0.5_r_tran*(ABS(dep_dist(w2v_idx)) &
-                               + ABS(dep_dist(w2v_idx + 1)))
+  courant(1) = 0.5_r_tran*(ABS(dep_dist(w2v_idx)) + ABS(dep_dist(w2v_idx + 1)))
   implness_w3(1) = 1.0_r_tran - 1.0_r_tran/(1.0_r_tran + 0.7_r_tran*(MAX( &
                           1.4_r_tran, courant(1)) - 1.4_r_tran))
   implness_w2v(1) = zero
@@ -187,13 +195,13 @@ subroutine ffsl_flux_z_adhimex_code( nlayers,    &
     ! Call matrix solver for last stage if required
     if ( (s == 5) .and. (any(implness_w2v /= zero)) ) then
       call gcrk( nlayers, rhs, field_s, field(w3_idx : w3_idx + nlayers - 1), a_im(s,s), &
-                 dep_dist(w2v_idx : w2v_idx + nlayers), implness_w2v)
+                 dep_dist(w2v_idx : w2v_idx + nlayers), implness_w2v, bool_gcrk_fct)
     else
       field_s = rhs
     end if
 
     ! Interpolate field_s to faces
-    call fifth_order_adhimex( nlayers, &
+    call fifth_order_interp( nlayers, &
                     field_s_w2v, field_s, dep_dist(w2v_idx : w2v_idx + nlayers) )
     c_field_s_w2v = dep_dist(w2v_idx : w2v_idx + nlayers)*field_s_w2v
 
@@ -201,9 +209,7 @@ subroutine ffsl_flux_z_adhimex_code( nlayers,    &
     ! (new description with fluxdiv and I needed to change adv and con around)
     onemimplness_w2v = ones - implness_w2v
     call fluxdiv(nlayers, c_field_s_w2v, f_ex_con(s,:), onemimplness_w2v)
-    ! f_ex_con(s,:) = f_ex_con(s,:)
     call fluxdiv(nlayers, c_field_s_w2v, f_im_con(s,:), implness_w2v)
-    ! f_im_con(s,:) = f_im_con(s,:)
     call fluxdiv(nlayers, c_field_s_w2v, f_ex_adv(s,:), ones)
     f_ex_adv(s,:) = (ones(1:nlayers) - implness_w3)*f_ex_adv(s,:)
     call fluxdiv(nlayers, c_field_s_w2v, f_im_adv(s,:), ones)
@@ -211,13 +217,19 @@ subroutine ffsl_flux_z_adhimex_code( nlayers,    &
 
     ! Update total flux
     flux(w2v_idx) = 0.0_r_tran
-    do k = 2, nlayers
-      flux(w2v_idx + k - 1) = flux(w2v_idx + k - 1) + (a_ex(nstages,s) &
-                                           *(ones(k) - implness_w2v(k)) + &
-          a_im(nstages,s)*implness_w2v(k))*c_field_s_w2v(k)*detj(w3_idx + k - 1)/dt
+    do k = 2, nlayers ! detj index points to upwind cell
+      flux(w2v_idx + k - 1) = flux(w2v_idx + k - 1) &
+          + (a_ex(nstages,s)*(ones(k) - implness_w2v(k)) + a_im(nstages,s)*implness_w2v(k)) &
+          *(MAX(zero, c_field_s_w2v(k))*detj(w3_idx + k - 2)                                &
+          + MIN(zero, c_field_s_w2v(k))*detj(w3_idx + k - 1))/dt
     end do
     flux(w2v_idx + nlayers) = 0.0_r_tran
   end do
+
+  if (do_fct) then
+    call fct(nlayers, flux(w2v_idx : w2v_idx + nlayers), field(w3_idx : w3_idx + nlayers - 1), &
+             dep_dist(w2v_idx : w2v_idx + nlayers), detj(w3_idx : w3_idx + nlayers - 1), dt)
+  end if
 
 end subroutine ffsl_flux_z_adhimex_code
 
@@ -227,7 +239,7 @@ end subroutine ffsl_flux_z_adhimex_code
 !> @param[in,out] fieldh    The flux to be computed
 !> @param[in]     field     The field to construct the flux
 !> @param[in]     dep_dist  The vertical departure points (signed C at faces)
-subroutine fifth_order_adhimex( nl,              &
+subroutine fifth_order_interp( nl,               &
                                       fieldh,    &
                                       field,     &
                                       dep_dist )
@@ -294,25 +306,27 @@ subroutine fifth_order_adhimex( nl,              &
                   + 47.0_r_tran*field(nl - 1)                           &
                   - 11.0_r_tran*field(nl)))/60.0_r_tran
 
-end subroutine fifth_order_adhimex
+end subroutine fifth_order_interp
 
 
 !> @brief     Solves the matrix with restarted GCR
 !> @details   Generalised conjugate gradient iterative matrix solver
 !> @param[in]     nl        Number of layers
-!> @param[in]     rhs       The flux to be computed
+!> @param[in]     rhs       b in Ax=b
 !> @param[in,out] field     The field to be computed
 !> @param[in]     initialguess     The initial guess
 !> @param[in]     a_im      The diagonal Butcher tableau coefficient for the stage
 !> @param[in]     dep_dist  The vertical departure points (signed C at faces)
 !> @param[in]     implness_w2v  Implicitness
+!> @param[in]     bool_gcrk_fct  For FCT or not. Sets mrestart, tol, spatial disc
 subroutine gcrk( nl,                  &
                         rhs,          &
                         field,        &
                         initialguess, &
                         a_im,         &
                         dep_dist,     &
-                        implness_w2v)
+                        implness_w2v, &
+                        bool_gcrk_fct )
 
   implicit none
 
@@ -324,9 +338,10 @@ subroutine gcrk( nl,                  &
   real(kind=r_tran),   intent(in)    :: a_im                 ! diagonal Butcher coefficient
   real(kind=r_tran),   intent(in)    :: dep_dist(nl + 1)     ! Courant number
   real(kind=r_tran),   intent(in)    :: implness_w2v(nl + 1) ! implicitness
+  logical(kind=l_def), intent(in)    :: bool_gcrk_fct        ! solving for FCT or not
 
   ! Internal variables
-  integer(kind=i_def) :: k, m, mrestart, j, i
+  integer(kind=i_def) :: k, m, j, i, mrestart
   real(kind=r_tran)   :: tol, reltol, Avj2_sum, Avi2_sum, alpha, r2max, rmx, zero
 
   integer(kind=i_def), parameter :: jiters = 5
@@ -342,12 +357,19 @@ subroutine gcrk( nl,                  &
   real(kind=r_tran) :: bv(nl)
   real(kind=r_tran) :: guess(nl)
 
-  tol = 1.0E-6
-  mrestart = 20
   zero = 0.0_r_tran
   guess = initialguess
 
-  call solve_fifth_order_matrix( nl, guess, lhs, a_im, dep_dist, implness_w2v)
+  if (bool_gcrk_fct) then ! AdImEx upwind
+    mrestart = 100
+    tol = 1.0E-15_r_tran
+    call solve_first_order_matrix( nl, guess, lhs, dep_dist, implness_w2v)
+  else ! AdHImEx
+    mrestart = 20
+    tol = 1.0E-6_r_tran
+    call solve_fifth_order_matrix( nl, guess, lhs, a_im, dep_dist, implness_w2v)
+  end if
+
   r = rhs - lhs
   reltol = tol*SQRT(SUM(rhs*rhs))
 
@@ -356,7 +378,12 @@ subroutine gcrk( nl,                  &
     v(1,:) = r
 
     do j = 1, jiters
-      call solve_fifth_order_matrix(nl, v(j,:), Avj, a_im, dep_dist, implness_w2v)
+      if (bool_gcrk_fct) then ! AdImEx upwind
+        call solve_first_order_matrix(nl, v(j,:), Avj, dep_dist, implness_w2v)
+      else ! AdHImEx
+        call solve_fifth_order_matrix(nl, v(j,:), Avj, a_im, dep_dist, implness_w2v)
+      end if
+
       Avj2_sum = zero
       do k = 1, nl
         Avj2_sum = Avj2_sum + Avj(k)*Avj(k)
@@ -370,15 +397,26 @@ subroutine gcrk( nl,                  &
       guess = guess + alpha*v(j,:)
       r = r - alpha*Avj
 
-      call solve_fifth_order_matrix(nl, r, Ar, a_im, dep_dist, implness_w2v)
+      if (bool_gcrk_fct) then ! AdImEx upwind
+        call solve_first_order_matrix(nl, r, Ar, dep_dist, implness_w2v)
+      else ! AdHImEx
+        call solve_fifth_order_matrix(nl, r, Ar, a_im, dep_dist, implness_w2v)
+      end if
+
       beta = zero
-      do i = 1, j ! + 1
-        call solve_fifth_order_matrix(nl, v(i,:), Avi, a_im, dep_dist, implness_w2v)
+      do i = 1, j
+        if (bool_gcrk_fct) then ! AdImEx upwind
+          call solve_first_order_matrix(nl, v(i,:), Avi, dep_dist, implness_w2v)
+        else ! AdHImEx
+          call solve_fifth_order_matrix(nl, v(i,:), Avi, a_im, dep_dist, implness_w2v)
+        end if
+
         Avi2_sum = zero
         do k = 1, nl
           Avi2_sum = Avi2_sum + Avi(k)*Avi(k)
         end do
         Avi2_sum = MAX(Avi2_sum, 1.0E-15_r_tran)
+
         do k = 1, nl
           beta(i) = beta(i) - Ar(k)*Avi(k)
         end do
@@ -386,7 +424,7 @@ subroutine gcrk( nl,                  &
       end do
 
       bv = zero
-      do i = 1, j ! + 1
+      do i = 1, j
         bv = bv + beta(i)*v(i,:)
       end do
 
@@ -435,7 +473,7 @@ subroutine solve_fifth_order_matrix( nl,            &
   real(kind=r_tran)   :: div(nl)
 
   ! Interpolate guess to faces
-  call fifth_order_adhimex(nl, fieldh, guess, dep_dist) ! out=fieldh (interp guess at faces)
+  call fifth_order_interp(nl, fieldh, guess, dep_dist) ! out=fieldh (interp guess at faces)
 
   c_fieldh = dep_dist*fieldh
 
@@ -473,6 +511,305 @@ subroutine fluxdiv( nl,                  &
   end do
 
 end subroutine fluxdiv
+
+
+!> @brief     Limits the high-order flux with flux-corrected transport (Zalesak 1979)
+!> @param[in]     nl        Number of layers
+!> @param[in,out] flux      High-order flux to be limited 
+!> @param[in]     field     Field at previous time step, needed for low-order solution
+!> @param[in]     dep_dist  Courant number at faces
+!> @param[in]     detj      Cell volume
+!> @param[in]     dt        Time step
+subroutine fct( nl,                  &
+                           flux,     &
+                           field,    &
+                           dep_dist, &
+                           detj,     &
+                           dt )
+
+  implicit none
+
+  ! Arguments
+  integer(kind=i_def), intent(in)    :: nl                ! nlayers
+  real(kind=r_tran),   intent(inout) :: flux(nl + 1)      ! high-order flux
+  real(kind=r_tran),   intent(in)    :: field(nl)         ! previous field
+  real(kind=r_tran),   intent(in)    :: dep_dist(nl + 1)  ! Courant
+  real(kind=r_tran),   intent(in)    :: detj(nl)          ! volume
+  real(kind=r_tran),   intent(in)    :: dt                ! time step
+
+  ! Internal variables
+  integer(kind=i_def) :: k
+  real(kind=r_tran) :: field_lo(nl)      ! low-order solution
+  real(kind=r_tran) :: flux_lo(nl + 1)   ! low-order flux
+  real(kind=r_tran) :: min_allowed(nl)   ! minimum allowable values
+  real(kind=r_tran) :: max_allowed(nl)   ! maximum allowable values
+  real(kind=r_tran) :: corr(nl + 1)      ! flux correction (high-order - low-order)
+  real(kind=r_tran) :: qp(nl)            !
+  real(kind=r_tran) :: qm(nl)            !
+  real(kind=r_tran) :: pp(nl)            !
+  real(kind=r_tran) :: pm(nl)            !
+  real(kind=r_tran) :: rp(nl)            !
+  real(kind=r_tran) :: rm(nl)            !
+  real(kind=r_tran) :: lim(nl + 1)       !
+
+  ! Calculate low-order solution (AdImEx upwind with 1-1/(2C))
+  call adimex_upwind(nl, field_lo, flux_lo, field, dep_dist, detj, dt)
+
+  ! Calculate allowable extrema
+  call set_extrema(nl, min_allowed, max_allowed, field_lo, field, dep_dist)
+
+  !============ FCT algorithm (corrects the flux) ============
+
+  corr = flux - flux_lo ! flux ~ some field*w*dx*dy
+
+  ! Calculate allowable mass in/out for max rise and fall
+  qp = detj*(max_allowed - field_lo)
+  qm = detj*(field_lo - min_allowed)
+
+  ! Calculate in/out fluxes at cell centers
+  do k = 1, nl
+    pp(k) = dt*MAX(0.0_r_tran, corr(k)) - MIN(0.0_r_tran, corr(k + 1))
+    pm(k) = dt*MAX(0.0_r_tran, corr(k + 1)) - MIN(0.0_r_tran, corr(k))
+  end do
+
+  ! Calculate ratios of allowable (Q) to existing high-order (P) fluxes
+  do k = 1, nl
+    if (pp(k) .gt. 1.0E-15_r_tran) then
+      rp(k) = MIN(1.0_r_tran, qp(k)/MAX(pp(k),1.0E-15_r_tran))
+    else
+      rp(k) = 0.0_r_tran
+    end if
+    if (pm(k) .gt. 1.0E-15_r_tran) then
+      rm(k) = MIN(1.0_r_tran, qm(k)/MAX(pm(k),1.0E-15_r_tran))
+    else
+      rm(k) = 0.0_r_tran
+    end if
+  end do
+
+  lim(1) = 0.0_r_tran
+  do k = 2, nl
+    if (corr(k) .ge. 0.0_r_tran) then
+      lim(k) = MIN(rp(k), rm(k - 1))
+    else
+      lim(k) = MIN(rm(k), rp(k - 1))
+    end if
+  end do
+  lim(nl + 1) = 0.0_r_tran
+
+  flux = flux_lo + lim*corr
+
+end subroutine fct
+
+
+!> @brief     Calculates first-order AdImEx upwind solution and fluxes
+!> @details   Used for FCT and assuming divergent flow (implness=1-1/(2C))
+!> @param[in]     nl        Number of layers
+!> @param[in,out] field_lo  AdImEx upwind solution
+!> @param[in,out] flux_lo   Flux that gives the AdImEx upwind solution
+!> @param[in]     field     Field at previous time step
+!> @param[in]     dep_dist  Courant number at faces
+!> @param[in]     detj      Cell-centred volume
+!> @param[in]     dt        Time step
+subroutine adimex_upwind( nl,        &
+                           field_lo, &
+                           flux_lo,  &
+                           field,    &
+                           dep_dist, &
+                           detj,     &
+                           dt )
+
+  implicit none
+
+  ! Arguments
+  integer(kind=i_def), intent(in)    :: nl                ! nlayers
+  real(kind=r_tran),   intent(inout) :: field_lo(nl)      ! low-order field
+  real(kind=r_tran),   intent(inout) :: flux_lo(nl + 1)   ! low-order flux
+  real(kind=r_tran),   intent(in)    :: field(nl)         ! previous field
+  real(kind=r_tran),   intent(in)    :: dep_dist(nl + 1)  ! Courant
+  real(kind=r_tran),   intent(in)    :: detj(nl)          ! cell volume
+  real(kind=r_tran),   intent(in)    :: dt                ! time step
+
+  ! Internal variables
+  integer(kind=i_def)  :: k
+  real(kind=r_tran)    :: zero
+  real(kind=r_tran)    :: ones(nl + 1)
+  real(kind=r_tran)    :: courant(nl)
+  real(kind=r_tran)    :: implness_1st_w3(nl)
+  real(kind=r_tran)    :: implness_1st_w2v(nl + 1)
+  real(kind=r_tran)    :: rhs(nl)
+  real(kind=r_tran)    :: fieldh_ex(nl + 1)
+  real(kind=r_tran)    :: c_fieldh_ex(nl + 1)
+  real(kind=r_tran)    :: div_ex(nl)
+  logical(kind=l_def)  :: bool_gcrk_fct
+
+  zero = 0.0_r_tran
+  ones = 1.0_r_tran
+
+  ! Calculate Courant number and implicitness - assumes uniform vertical grid
+  courant(1) = 0.5_r_tran*(ABS(dep_dist(1)) + ABS(dep_dist(2)))
+  implness_1st_w3(1) = 1.0_r_tran - 1.0_r_tran/MAX(1.0_r_tran, 2.0_r_tran*courant(1))
+  implness_1st_w2v(1) = zero
+  do k = 1, nl - 1
+    courant(k + 1) = 0.5_r_tran*(ABS(dep_dist(k + 1)) + ABS(dep_dist(k + 2)))
+    implness_1st_w3(k + 1) = 1.0_r_tran - 1.0_r_tran/MAX(1.0_r_tran, 2.0_r_tran*courant(k + 1))
+    implness_1st_w2v(k + 1) = MAX(implness_1st_w3(k), implness_1st_w3(k+1))
+  end do
+  implness_1st_w2v(nl + 1) = zero
+
+  ! Calculate rhs (explicit part)
+  call first_order_interp(nl, fieldh_ex, field, dep_dist) ! out=fieldh_ex (interp field at faces)
+
+  c_fieldh_ex = dep_dist*fieldh_ex
+
+  ! Calculate explicit flux divergence
+  call fluxdiv(nl, c_fieldh_ex, div_ex, 1.0_r_tran - implness_1st_w2v)
+
+  ! Calculate first-order explicit RHS
+  rhs = field + div_ex
+
+  ! Solve matrix and find field_lo
+  if (any(implness_1st_w2v /= zero)) then
+    bool_gcrk_fct = .true.
+    call gcrk( nl, rhs, field_lo, field, zero, dep_dist, implness_1st_w2v, bool_gcrk_fct)
+  else
+    field_lo = rhs
+  end if
+
+  ! Find flux_lo based on field_lo
+  flux_lo(1) = zero
+  do k = 2, nl ! detj index points to upwind cell
+    flux_lo(k) = (MAX(zero, dep_dist(k))*(ones(k) - implness_1st_w2v(k))*field(k - 1)         &
+                 + MAX(zero, dep_dist(k))*implness_1st_w2v(k)*field_lo(k - 1))*detj(k - 1)/dt &
+                 + (MIN(zero, dep_dist(k))*(ones(k) - implness_1st_w2v(k))*field(k)           &
+                 + MIN(zero, dep_dist(k))*implness_1st_w2v(k)*field_lo(k))*detj(k)/dt
+  end do
+  flux_lo(nl + 1) = zero
+
+end subroutine adimex_upwind
+
+
+!> @brief Calculates first-order interpolated field at faces for AdImEx upwind (for FCT)
+!> @param[in]     nl        Number of layers (needs to be at least 6)
+!> @param[in,out] fieldh    The flux to be computed
+!> @param[in]     field     The field to construct the flux
+!> @param[in]     dep_dist  The vertical departure points (signed C at faces)
+subroutine first_order_interp( nl,              &
+                                      fieldh,   &
+                                      field,    &
+                                      dep_dist )
+
+  implicit none
+
+  ! Arguments
+  integer(kind=i_def), intent(in)    :: nl                ! nlayers
+  real(kind=r_tran),   intent(inout) :: fieldh(nl + 1)    ! interpolated field
+  real(kind=r_tran),   intent(in)    :: field(nl)         ! field to interpolate
+  real(kind=r_tran),   intent(in)    :: dep_dist(nl + 1)  ! Courant (used for sign)
+
+  ! Internal variables
+  integer(kind=i_def) :: k
+
+  ! Loop over most of the spatial domain (excluding boundaries)
+  do k = 1, nl - 1
+    fieldh(k + 1) = MAX(0.0_r_tran, SIGN(1.0_r_tran, dep_dist(k + 1)))*field(k) & ! u>=0
+      - MIN(0.0_r_tran, SIGN(1.0_r_tran, dep_dist(k + 1)))*field(k + 1)           ! u<0
+  end do
+
+  fieldh(1) = field(1)         ! lower boundary, u>=0
+  fieldh(nl + 1) = field(nl)   ! upper boundary, u<=0
+
+end subroutine first_order_interp
+
+
+!> @brief         Applies the first-order matrix to a field (guess)
+!> @param[in]     nl        Number of layers
+!> @param[in]     guess     The initial guess
+!> @param[in,out] lhs       Left-hand side result of applying matrix
+!> @param[in]     dep_dist  The vertical departure points (signed C at faces)
+!> @param[in]     implness_1st_w2v  Implicitness at faces
+subroutine solve_first_order_matrix( nl,            &
+                                      guess,        &
+                                      lhs,          &
+                                      dep_dist,     &
+                                      implness_1st_w2v )
+
+  implicit none
+
+  ! Arguments
+  integer(kind=i_def), intent(in)    :: nl                   ! nlayers
+  real(kind=r_tran),   intent(in)    :: guess(nl)            ! matrix input field
+  real(kind=r_tran),   intent(inout) :: lhs(nl)              ! lhs field after applying matrix
+  real(kind=r_tran),   intent(in)    :: dep_dist(nl + 1)     ! Courant number
+  real(kind=r_tran),   intent(in)    :: implness_1st_w2v(nl + 1) ! implicitness
+
+
+  ! Internal variables
+  real(kind=r_tran)   :: fieldh(nl + 1)
+  real(kind=r_tran)   :: c_fieldh(nl + 1)
+  real(kind=r_tran)   :: div(nl)
+
+  ! Interpolate guess to faces
+  call first_order_interp(nl, fieldh, guess, dep_dist) ! out=fieldh (interp guess at faces)
+
+  c_fieldh = dep_dist*fieldh
+
+  call fluxdiv(nl, c_fieldh, div, implness_1st_w2v) ! outputs div
+
+  lhs = guess - div
+
+end subroutine solve_first_order_matrix
+
+
+!> @brief     Find min and max allowable values in each cell for FCT
+!> @param[in]     nl          Number of layers
+!> @param[in,out] min_allowed Minimum value allowed in cell
+!> @param[in,out] max_allowed Maximum value allowed in cell
+!> @param[in]     field_lo    Low-order solution
+!> @param[in]     field       Field at previous time step, needed for low-order solution
+!> @param[in]     dep_dist    Courant number at faces
+subroutine set_extrema( nl,                  &
+                           min_allowed,      &
+                           max_allowed,      &
+                           field_lo,         &
+                           field,            &
+                           dep_dist )
+
+  implicit none
+
+  ! Arguments
+  integer(kind=i_def), intent(in)    :: nl                ! nlayers
+  real(kind=r_tran),   intent(inout) :: min_allowed(nl)   ! min values
+  real(kind=r_tran),   intent(inout) :: max_allowed(nl)   ! max values
+  real(kind=r_tran),   intent(in)    :: field_lo(nl)      ! low-order field
+  real(kind=r_tran),   intent(in)    :: field(nl)         ! previous field
+  real(kind=r_tran),   intent(in)    :: dep_dist(nl + 1)  ! Courant
+
+  ! Internal variables
+  integer(kind=i_def)  :: k
+
+  if ( MAXVAL(dep_dist) .gt. 1.0_r_tran ) then
+    min_allowed(1) = MIN(field_lo(1), field_lo(2))
+    max_allowed(1) = MAX(field_lo(1), field_lo(2))
+    do k = 2, nl - 1
+      min_allowed(k) = MIN(field_lo(k - 1), field_lo(k), field_lo(k + 1))
+      max_allowed(k) = MAX(field_lo(k - 1), field_lo(k), field_lo(k + 1))
+    end do
+    min_allowed(nl) = MIN(field_lo(nl - 1), field_lo(nl))
+    max_allowed(nl) = MAX(field_lo(nl - 1), field_lo(nl))
+  else
+    min_allowed(1) = MIN(field_lo(1), field_lo(2), field(1), field(2))
+    max_allowed(1) = MAX(field_lo(1), field_lo(2), field(1), field(2))
+    do k = 2, nl - 1
+      min_allowed(k) = MIN(field_lo(k - 1), field_lo(k), field_lo(k + 1), &
+                           field(k - 1), field(k), field(k + 1))
+      max_allowed(k) = MAX(field_lo(k - 1), field_lo(k), field_lo(k + 1), &
+                           field(k - 1), field(k), field(k + 1))
+    end do
+    min_allowed(nl) = MIN(field_lo(nl - 1), field_lo(nl), field(nl - 1), field(nl))
+    max_allowed(nl) = MAX(field_lo(nl - 1), field_lo(nl), field(nl - 1), field(nl))
+  end if
+
+end subroutine set_extrema
 
 
 end module ffsl_flux_z_adhimex_kernel_mod
