@@ -118,24 +118,20 @@ subroutine ffsl_flux_z_adhimex_code( nlayers,    &
   real(kind=r_tran)   :: f_im_adv(nstages, nlayers)   ! im advective divergence
   real(kind=r_tran)   :: f_ex_con(nstages, nlayers)   ! ex conservative divergence
   real(kind=r_tran)   :: f_im_con(nstages, nlayers)   ! im conservative divergence
-  real(kind=r_tran)   :: zero !, tol
+  real(kind=r_tran)   :: zero
   logical(kind=l_def) :: bool_gcrk_fct                ! for GCR(k) settings
-  logical(kind-l_def) :: do_fct                       ! boolean whether or not to limit
+  logical(kind=l_def) :: do_fct                       ! boolean whether or not to limit
                                                       ! todo: set up in testcase?
 
   w2v_idx = map_w2v(1)
   w3_idx = map_w3(1)
   zero = 0.0_r_tran
   ones = 1.0_r_tran
-  ! mrestart = 20
-  ! jiters = 5
-  ! tol = 1.0E-6_r_tran
-
+  bool_gcrk_fct = .false.
   do_fct = .true.
 
   ! Calculate Courant number and implicitness - assumes uniform vertical grid
-  courant(1) = 0.5_r_tran*(ABS(dep_dist(w2v_idx)) &
-                               + ABS(dep_dist(w2v_idx + 1)))
+  courant(1) = 0.5_r_tran*(ABS(dep_dist(w2v_idx)) + ABS(dep_dist(w2v_idx + 1)))
   implness_w3(1) = 1.0_r_tran - 1.0_r_tran/(1.0_r_tran + 0.7_r_tran*(MAX( &
                           1.4_r_tran, courant(1)) - 1.4_r_tran))
   implness_w2v(1) = zero
@@ -183,7 +179,6 @@ subroutine ffsl_flux_z_adhimex_code( nlayers,    &
 
     ! Call matrix solver for last stage if required
     if ( (s == 5) .and. (any(implness_w2v /= zero)) ) then
-      bool_gcrk_fct = .false.
       call gcrk( nlayers, rhs, field_s, field(w3_idx : w3_idx + nlayers - 1), a_im(s,s), &
                  dep_dist(w2v_idx : w2v_idx + nlayers), implness_w2v, bool_gcrk_fct)
     else
@@ -199,9 +194,7 @@ subroutine ffsl_flux_z_adhimex_code( nlayers,    &
     ! (new description with fluxdiv and I needed to change adv and con around)
     onemimplness_w2v = ones - implness_w2v
     call fluxdiv(nlayers, c_field_s_w2v, f_ex_con(s,:), onemimplness_w2v)
-    ! f_ex_con(s,:) = - f_ex_con(s,:)
     call fluxdiv(nlayers, c_field_s_w2v, f_im_con(s,:), implness_w2v)
-    ! f_im_con(s,:) = - f_im_con(s,:)
     call fluxdiv(nlayers, c_field_s_w2v, f_ex_adv(s,:), ones)
     f_ex_adv(s,:) = (ones(1:nlayers) - implness_w3)*f_ex_adv(s,:)
     call fluxdiv(nlayers, c_field_s_w2v, f_im_adv(s,:), ones)
@@ -209,10 +202,11 @@ subroutine ffsl_flux_z_adhimex_code( nlayers,    &
 
     ! Update total flux
     flux(w2v_idx) = 0.0_r_tran
-    do k = 2, nlayers
-      flux(w2v_idx + k - 1) = flux(w2v_idx + k - 1) + (a_ex(nstages,s) &
-                                           *(ones(k) - implness_w2v(k)) + &
-          a_im(nstages,s)*implness_w2v(k))*c_field_s_w2v(k)*detj(w3_idx + k - 1)/dt
+    do k = 2, nlayers ! detj index points to upwind cell
+      flux(w2v_idx + k - 1) = flux(w2v_idx + k - 1) &
+          + (a_ex(nstages,s)*(ones(k) - implness_w2v(k)) + a_im(nstages,s)*implness_w2v(k)) &
+          *(MAX(zero, c_field_s_w2v(k))*detj(w3_idx + k - 2)                                &
+          + MIN(zero, c_field_s_w2v(k))*detj(w3_idx + k - 1))/dt
     end do
     flux(w2v_idx + nlayers) = 0.0_r_tran
   end do
@@ -523,12 +517,13 @@ subroutine fct( nl,                  &
   ! Arguments
   integer(kind=i_def), intent(in)    :: nl                ! nlayers
   real(kind=r_tran),   intent(inout) :: flux(nl + 1)      ! high-order flux
-  real(kind=r_tran),   intent(inout) :: field(nl)         ! previous field
+  real(kind=r_tran),   intent(in)    :: field(nl)         ! previous field
   real(kind=r_tran),   intent(in)    :: dep_dist(nl + 1)  ! Courant
   real(kind=r_tran),   intent(in)    :: detj(nl)          ! volume
   real(kind=r_tran),   intent(in)    :: dt                ! time step
 
   ! Internal variables
+  integer(kind=i_def) :: k
   real(kind=r_tran) :: field_lo(nl)      ! low-order solution
   real(kind=r_tran) :: flux_lo(nl + 1)   ! low-order flux
   real(kind=r_tran) :: min_allowed(nl)   ! minimum allowable values
@@ -543,7 +538,7 @@ subroutine fct( nl,                  &
   real(kind=r_tran) :: lim(nl + 1)       !
 
   ! Calculate low-order solution (AdImEx upwind with 1-1/(2C))
-  call adimex_upwind(nl, field_lo, flux_lo, field, dep_dist)
+  call adimex_upwind(nl, field_lo, flux_lo, field, dep_dist, detj, dt)
 
   ! Calculate allowable extrema
   call set_extrema(nl, min_allowed, max_allowed, field_lo, field, dep_dist)
@@ -598,11 +593,15 @@ end subroutine fct
 !> @param[in,out] flux_lo   Flux that gives the AdImEx upwind solution
 !> @param[in]     field     Field at previous time step
 !> @param[in]     dep_dist  Courant number at faces
+!> @param[in]     detj      Cell-centred volume
+!> @param[in]     dt        Time step
 subroutine adimex_upwind( nl,        &
                            field_lo, &
                            flux_lo,  &
                            field,    &
-                           dep_dist )
+                           dep_dist, &
+                           detj,     &
+                           dt )
 
   implicit none
 
@@ -612,10 +611,12 @@ subroutine adimex_upwind( nl,        &
   real(kind=r_tran),   intent(inout) :: flux_lo(nl + 1)   ! low-order flux
   real(kind=r_tran),   intent(in)    :: field(nl)         ! previous field
   real(kind=r_tran),   intent(in)    :: dep_dist(nl + 1)  ! Courant
+  real(kind=r_tran),   intent(in)    :: detj(nl)          ! cell volume
+  real(kind=r_tran),   intent(in)    :: dt                ! time step
 
   ! Internal variables
-  integer(kind=i_def)  :: mrestart, jiters, k
-  real(kind=r_tran)    :: zero, tol, a_im
+  integer(kind=i_def)  :: k
+  real(kind=r_tran)    :: zero
   real(kind=r_tran)    :: ones(nl + 1)
   real(kind=r_tran)    :: courant(nl)
   real(kind=r_tran)    :: implness_1st_w3(nl)
@@ -626,15 +627,11 @@ subroutine adimex_upwind( nl,        &
   real(kind=r_tran)    :: div_ex(nl)
   logical(kind=l_def)  :: bool_gcrk_fct
 
-  mrestart = 20
-  jiters = 10
   zero = 0.0_r_tran
-  tol = 1.0E-15_r_tran
   ones = 1.0_r_tran
 
   ! Calculate Courant number and implicitness - assumes uniform vertical grid
-  courant(1) = 0.5_r_tran*(ABS(dep_dist(1)) &
-                               + ABS(dep_dist(2)))
+  courant(1) = 0.5_r_tran*(ABS(dep_dist(1)) + ABS(dep_dist(2)))
   implness_1st_w3(1) = 1.0_r_tran - 1.0_r_tran/MAX(1.0_r_tran, 2.0_r_tran*courant(1))
   implness_1st_w2v(1) = zero
   do k = 1, nl - 1
@@ -658,19 +655,18 @@ subroutine adimex_upwind( nl,        &
   ! Solve matrix and find field_lo
   if (any(implness_1st_w2v /= zero)) then
     bool_gcrk_fct = .true.
-    a_im = zero
-    call gcrk( nl, rhs, field_lo, field, a_im, dep_dist, implness_1st_w2v, bool_gcrk_fct)
+    call gcrk( nl, rhs, field_lo, field, zero, dep_dist, implness_1st_w2v, bool_gcrk_fct)
   else
     field_lo = rhs
   end if
 
   ! Find flux_lo based on field_lo
   flux_lo(1) = zero
-  do k = 2, nl
-    flux_lo(k) = MAX(zero, dep_dist(k))*(ones(k) - implness_1st_w2v(k))*field(k - 1) &
-                 + MIN(zero, dep_dist(k))*(ones(k) - implness_1st_w2v(k))*field(k)   &
-                 + MAX(zero, dep_dist(k))*implness_1st_w2v(k)*field_lo(k - 1)        &
-                 + MIN(zero, dep_dist(k))*implness_1st_w2v(k)*field_lo(k)
+  do k = 2, nl ! detj index points to upwind cell
+    flux_lo(k) = (MAX(zero, dep_dist(k))*(ones(k) - implness_1st_w2v(k))*field(k - 1)         &
+                 + MAX(zero, dep_dist(k))*implness_1st_w2v(k)*field_lo(k - 1))*detj(k - 1)/dt &
+                 + (MIN(zero, dep_dist(k))*(ones(k) - implness_1st_w2v(k))*field(k)           &
+                 + MIN(zero, dep_dist(k))*implness_1st_w2v(k)*field_lo(k))*detj(k)/dt
   end do
   flux_lo(nl + 1) = zero
 
