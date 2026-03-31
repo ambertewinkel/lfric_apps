@@ -580,6 +580,23 @@ subroutine fct( nl,       &
 
   corr = flux - flux_lo ! flux has units field*w*dx*dy
 
+  ! Set the correction to zero in rare cases
+  if ( ( corr(2)*(field_lo(2) - field_lo(1)) .lt. 0.0_r_tran ) .and. &
+       ( corr(2)*(field_lo(3) - field_lo(2)) .lt. 0.0_r_tran ) ) then
+    corr(2) = 0.0_r_tran
+  end if
+  do k = 3, nl - 1
+    if ( ( corr(k)*(field_lo(k) - field_lo(k - 1)) .lt. 0.0_r_tran ) .and. &
+         ( ( corr(k)*(field_lo(k + 1) - field_lo(k)) .lt. 0.0_r_tran ) .or. &
+         ( corr(k)*(field_lo(k - 1) - field_lo(k - 2)) .lt. 0.0_r_tran ) ) ) then
+      corr(k) = 0.0_r_tran
+    end if
+  end do
+  if ( ( corr(nl)*(field_lo(nl) - field_lo(nl - 1)) .lt. 0.0_r_tran ) .and. &
+       ( corr(k)*(field_lo(nl - 1) - field_lo(nl - 2)) .lt. 0.0_r_tran ) ) then
+    corr(nl) = 0.0_r_tran
+  end if
+
   ! Calculate allowable mass in/out for max rise and fall
   qp = detj*(max_allowed - field_lo)
   qm = detj*(field_lo - min_allowed)
@@ -658,7 +675,8 @@ subroutine adimex_upwind( nl,       &
   real(kind=r_tran)    :: fieldh_ex(nl + 1)
   real(kind=r_tran)    :: c_fieldh_ex(nl + 1)
   real(kind=r_tran)    :: div_ex(nl)
-  logical(kind=l_def)  :: bool_gcrk_fct
+  real(kind=r_tran)    :: guess(nl)
+  logical(kind=l_def)  :: gcrk_fct
 
   zero = 0.0_r_tran
   ones = 1.0_r_tran
@@ -687,8 +705,9 @@ subroutine adimex_upwind( nl,       &
 
   ! Solve matrix and find field_lo
   if (any(implness_1st_w2v /= zero)) then
-    bool_gcrk_fct = .true.
-    call gcrk( nl, rhs, field_lo, field, zero, dep_dist, implness_1st_w2v, bool_gcrk_fct)
+    gcrk_fct = .true.
+    guess = field_lo
+    call gcrk( nl, rhs, field_lo, guess, zero, dep_dist, implness_1st_w2v, gcrk_fct)
   else
     field_lo = rhs
   end if
