@@ -598,6 +598,9 @@ subroutine fct( nl,                  &
 
   flux = flux_lo + lim*corr
 
+  ! Testing whether low-order solution is monotonic/bounded
+  flux = flux_lo
+
 end subroutine fct
 
 
