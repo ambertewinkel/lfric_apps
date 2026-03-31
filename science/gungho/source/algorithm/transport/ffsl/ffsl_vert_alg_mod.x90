@@ -258,13 +258,14 @@ contains
     logical(kind=l_def) :: log_space
     integer(kind=i_def) :: monotone
     logical(kind=l_def) :: reversible
+    logical(kind=l_def) :: monotonicity
     integer(kind=i_def) :: equation_form
     integer(kind=i_def) :: splitting
     logical(kind=l_def) :: first_order_cheap_update
 
     ! Internal fields
     type(r_tran_field_type) :: dz_w3
-    type(r_tran_field_type) :: C_w3
+    !type(r_tran_field_type) :: C_w3
 
     ! Useful constants
     integer(kind=i_def) :: mesh_id
@@ -416,24 +417,17 @@ contains
                                                log_space) )
     case ( 3 )
       ! AdHImEx reconstruction (not actually FFSL)
-      call log_event('=========> We get to the case(3) ', LOG_LEVEL_DEBUG)
-      call log_field_minmax( LOG_LEVEL_DEBUG, "mass flux", mass_flux )
-      call log_field_minmax( LOG_LEVEL_DEBUG, "dep pts", dep_pts_z )
-      call log_field_minmax( LOG_LEVEL_DEBUG, "field", field_n )
-      call log_field_minmax( LOG_LEVEL_DEBUG, "detj", detj_at_w3 )
-
-
+      if ( monotone == monotone_none ) then
+        monotonicity = .false.
+      else
+        monotonicity = .true.
+      end if
       call invoke( ffsl_flux_z_adhimex_kernel_type(mass_flux,                  &
                                                     dep_pts_z,                 &
                                                     field_n,                   &
                                                     detj_at_w3,                &
-                                                    step_dt) )
-
-      call log_event('=========> We have exited the kernel in case(3) ', LOG_LEVEL_DEBUG)
-      call log_field_minmax( LOG_LEVEL_DEBUG, "mass flux", mass_flux )
-      call log_field_minmax( LOG_LEVEL_DEBUG, "dep pts", dep_pts_z )
-      call log_field_minmax( LOG_LEVEL_DEBUG, "field", field_n )
-      call log_field_minmax( LOG_LEVEL_DEBUG, "detj", detj_at_w3 )
+                                                    step_dt,                   &
+                                                    monotonicity) )
 
     case default
       call log_event( "ffsl_1d_vert_flux_alg: order not implemented", LOG_LEVEL_ERROR )
