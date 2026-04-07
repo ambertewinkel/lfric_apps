@@ -29,13 +29,14 @@ private
 !> The type declaration for the kernel. Contains the metadata needed by the Psy layer
 type, public, extends(kernel_type) :: ffsl_flux_z_adhimex_kernel_type
   private
-  type(arg_type) :: meta_args(6) = (/                  &
+  !type(arg_type) :: meta_args(6) = (/                  &
+  type(arg_type) :: meta_args(5) = (/                  &
        arg_type(GH_FIELD,  GH_REAL,    GH_WRITE, W2v), & ! flux
        arg_type(GH_FIELD,  GH_REAL,    GH_READ,  W2v), & ! dep pts
        arg_type(GH_FIELD,  GH_REAL,    GH_READ,  W3),  & ! field
        arg_type(GH_FIELD,  GH_REAL,    GH_READ,  W3),  & ! detj
-       arg_type(GH_SCALAR, GH_REAL,    GH_READ),       & ! dt
-       arg_type(GH_SCALAR, GH_LOGICAL, GH_READ)        & ! monotonicity
+       arg_type(GH_SCALAR, GH_REAL,    GH_READ) & !,       & ! dt
+       !arg_type(GH_SCALAR, GH_LOGICAL, GH_READ)        & ! monotonicity
        /)
   integer :: operates_on = CELL_COLUMN
 contains
@@ -79,7 +80,7 @@ subroutine ffsl_flux_z_adhimex_code( nlayers,       &
                                       field,        &
                                       detj,         &
                                       dt,           &
-                                      monotonicity, &
+                                      !monotonicity, &
                                       ndf_w2v,      &
                                       undf_w2v,     &
                                       map_w2v,      &
@@ -102,7 +103,7 @@ subroutine ffsl_flux_z_adhimex_code( nlayers,       &
   integer(kind=i_def), intent(in)    :: map_w3(ndf_w3)
   integer(kind=i_def), intent(in)    :: map_w2v(ndf_w2v)
   real(kind=r_tran),   intent(in)    :: dt
-  logical(kind=l_def), intent(in)    :: monotonicity
+  !logical(kind=l_def), intent(in)    :: monotonicity
 
   ! Internal variables
   integer(kind=i_def) :: k, s, i_s, w2v_idx, w3_idx
@@ -129,12 +130,14 @@ subroutine ffsl_flux_z_adhimex_code( nlayers,       &
   real(kind=r_tran)   :: f_ex_adv(nstages, nlayers)   ! ex advective divergence
   real(kind=r_tran)   :: f_im_adv(nstages, nlayers)   ! im advective divergence
   real(kind=r_tran)   :: detj_upwind
+  logical(kind=l_def) :: monotonicity
 
   ! Map indices and constants
   w2v_idx = map_w2v(1)
   w3_idx = map_w3(1)
   ones = 1.0_r_tran
   gcrk_fct = .false.
+  monotonicity = .true.
 
   ! Calculate absolute Courant number and implicitness - assumes uniform vertical grid
   courant(1) = 0.5_r_tran*(ABS(dep_dist(w2v_idx)) + ABS(dep_dist(w2v_idx + 1)))
@@ -603,8 +606,8 @@ subroutine fct( nl,       &
 
   ! Calculate in/out fluxes at cell centers
   do k = 1, nl
-    pp(k) = dt*MAX(0.0_r_tran, corr(k)) - MIN(0.0_r_tran, corr(k + 1))
-    pm(k) = dt*MAX(0.0_r_tran, corr(k + 1)) - MIN(0.0_r_tran, corr(k))
+    pp(k) = dt*(MAX(0.0_r_tran, corr(k)) - MIN(0.0_r_tran, corr(k + 1)))
+    pm(k) = dt*(MAX(0.0_r_tran, corr(k + 1)) - MIN(0.0_r_tran, corr(k)))
   end do
 
   ! Calculate ratios of allowable (Q) to existing high-order (P) fluxes
